@@ -6,7 +6,7 @@ One source of truth — rendered to three platforms. Zero runtime dependencies b
 
 ## Status
 
-v0.0.1 — scaffolding (M0 Bootstrap). See [PLAN.md][plan] for the implementation roadmap.
+v0.0.1 — scaffolding (M0 Bootstrap). Rules logic lands in M1+.
 
 ## Install
 
@@ -63,4 +63,3 @@ MIT. See [LICENSE](LICENSE).
 Rule text cites Holzmann (2006) and the JPL Institutional Coding Standard; paraphrases used throughout.
 
 [holzmann]: https://spinroot.com/gerard/pdf/P10.pdf
-[plan]: ./PLAN.md

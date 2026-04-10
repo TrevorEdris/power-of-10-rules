@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "languages": ["python"],
+  "waiver_expiry": "warn",
+  "waiver_lookback": 3,
+  "init_phase_marker": "# pow10:init-end",
+  "analyzer_overrides": {},
+  "report": {
+    "formats": ["markdown", "json"],
+    "path": "docs/pow10-report"
+  }
+}

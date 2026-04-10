@@ -1,0 +1,13 @@
+{
+  "name": "pow10",
+  "version": "0.0.1",
+  "description": "NASA Power of 10 rules for safety-critical code as Claude Code skills.",
+  "author": {
+    "name": "TrevorEdris",
+    "url": "https://github.com/TrevorEdris"
+  },
+  "homepage": "https://github.com/TrevorEdris/power-of-10-rules",
+  "repository": "https://github.com/TrevorEdris/power-of-10-rules",
+  "license": "MIT",
+  "keywords": ["safety-critical", "nasa", "jpl", "power-of-10", "static-analysis"]
+}

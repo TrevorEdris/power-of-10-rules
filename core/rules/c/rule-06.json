@@ -1,0 +1,20 @@
+{
+  "id": "pow10-6",
+  "number": 6,
+  "name": "Declare data objects at the smallest possible scope",
+  "rationale": "Variables declared at the narrowest scope where they are used make data hiding explicit, simplify debugging, and prevent accidental cross-scope mutation. Globals and file-scope statics should be avoided; when unavoidable, they must be const or guarded by documented access protocols. Narrow scope also helps the compiler optimize register allocation and lifetime analysis.",
+  "severity": "medium",
+  "languages": ["c"],
+  "enforcement": {
+    "strategy": "static-analysis",
+    "tools": ["clang-tidy"],
+    "notes": "Clang-tidy check: cppcoreguidelines-avoid-non-const-global-variables. Flag any non-const global or file-scope static. For function-local variables, recommend declaring at point of first use (C99) rather than function top."
+  },
+  "citations": [
+    {
+      "source": "Holzmann 2006",
+      "reference": "Rule 6, The Power of 10: Rules for Developing Safety-Critical Code, IEEE Computer 39(6), 95-97"
+    }
+  ],
+  "tags": ["encapsulation", "data-hiding"]
+}

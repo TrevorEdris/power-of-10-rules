@@ -76,13 +76,53 @@ def load_schema() -> Dict[str, Any]:
 # Validator — minimal JSON Schema subset
 # ---------------------------------------------------------------------------
 
-# Supported keywords: type, required, enum, pattern, items, properties,
-# additionalProperties. Anything else in the schema is ignored.
+# Supported keywords. Any keyword in schema.json that is not in this set is a
+# drift bug — the schema author thinks it is being enforced when it is not.
+_SUPPORTED_SCHEMA_KEYWORDS = frozenset(
+    {
+        # Enforced by _validate:
+        "type",
+        "required",
+        "enum",
+        "pattern",
+        "items",
+        "properties",
+        "additionalProperties",
+        # Metadata-only, safe to ignore:
+        "$comment",
+        "title",
+        "description",
+    }
+)
+
+
+class SchemaDriftError(ValueError):
+    """Raised when schema.json uses a keyword the validator does not implement."""
+
+
+def _assert_known_keywords(schema: Dict[str, Any], path: str) -> None:
+    """Walk the schema and raise if an unsupported keyword appears."""
+    if not isinstance(schema, dict):
+        return
+    for key in schema:
+        if key not in _SUPPORTED_SCHEMA_KEYWORDS:
+            raise SchemaDriftError(
+                f"{path}: unsupported schema keyword {key!r}; "
+                f"validator only implements {sorted(_SUPPORTED_SCHEMA_KEYWORDS)}"
+            )
+    properties = schema.get("properties", {})
+    if isinstance(properties, dict):
+        for prop_name, prop_schema in properties.items():
+            _assert_known_keywords(prop_schema, f"{path}.properties.{prop_name}")
+    items = schema.get("items")
+    if items is not None:
+        _assert_known_keywords(items, f"{path}.items")
 
 
 def validate_rule(data: Any) -> List[str]:
     """Validate `data` against core/rules/schema.json. Returns error list."""
     schema = load_schema()
+    _assert_known_keywords(schema, "$")
     return _validate(data, schema, "$")
 
 
@@ -120,7 +160,9 @@ def _validate(data: Any, schema: Dict[str, Any], path: str) -> List[str]:
             errors.append(f"{path}: expected string, got {type(data).__name__}")
             return errors
         pattern = schema.get("pattern")
-        if pattern is not None and re.match(pattern, data) is None:
+        # Use fullmatch so `$` cannot accept a trailing newline (Python's re.match
+        # + "$" diverges from ECMA 262, which JSON Schema draft-7 follows).
+        if pattern is not None and re.fullmatch(pattern, data) is None:
             errors.append(f"{path}: does not match pattern {pattern!r}")
         enum = schema.get("enum")
         if enum is not None and data not in enum:

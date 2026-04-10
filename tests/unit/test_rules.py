@@ -149,6 +149,69 @@ class TestValidateRule(unittest.TestCase):
         errors = validate_rule(["not", "an", "object"])  # type: ignore[arg-type]
         self.assertTrue(len(errors) >= 1)
 
+    def test_id_with_trailing_newline_is_rejected(self) -> None:
+        """Python's re.match+`$` would accept a trailing newline. ECMA 262 (the
+        regex flavor JSON Schema draft-7 specifies) would not. Validator must
+        use re.fullmatch so the stdlib implementation matches the spec."""
+        from pow10.rules import validate_rule
+
+        data = dict(VALID_RULE_DICT)
+        data["id"] = "pow10-1\n"
+        errors = validate_rule(data)
+        self.assertTrue(
+            any("id" in e and "pattern" in e for e in errors),
+            msg=f"expected pattern error on id, got {errors}",
+        )
+
+
+class TestSchemaDriftGuard(unittest.TestCase):
+    """The hand-rolled validator and hand-written schema must stay in sync.
+
+    If someone adds a keyword like `minLength` to schema.json expecting it to
+    be enforced, _assert_known_keywords must raise so the drift is loud.
+    """
+
+    def test_unsupported_keyword_in_schema_raises(self) -> None:
+        from pow10.rules import SchemaDriftError, _assert_known_keywords
+
+        drifted = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 5},
+            },
+        }
+        with self.assertRaises(SchemaDriftError) as ctx:
+            _assert_known_keywords(drifted, "$")
+        self.assertIn("minLength", str(ctx.exception))
+
+    def test_supported_keywords_do_not_raise(self) -> None:
+        from pow10.rules import _assert_known_keywords, load_schema
+
+        # The real schema.json must be clean — if it ever drifts, this fails.
+        _assert_known_keywords(load_schema(), "$")
+
+
+class TestLoadRuleValidationError(unittest.TestCase):
+    def test_load_rule_raises_on_semantic_violation(self) -> None:
+        """load_rule must surface validation failures as RuleValidationError,
+        not let the KeyError escape from the downstream dataclass construction."""
+        from pow10.rules import RuleValidationError, load_rule
+
+        broken = dict(VALID_RULE_DICT)
+        del broken["severity"]
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as f:
+            json.dump(broken, f)
+            tmp_path = Path(f.name)
+        try:
+            with self.assertRaises(RuleValidationError) as ctx:
+                load_rule(tmp_path)
+            self.assertIn(str(tmp_path), str(ctx.exception))
+            self.assertIn("severity", str(ctx.exception))
+        finally:
+            tmp_path.unlink()
+
 
 class TestValidateCliEntrypoint(unittest.TestCase):
     """tools/validate.py is the entry point CI calls.
@@ -179,17 +242,35 @@ class TestValidateCliEntrypoint(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[2]
         bad_rule = repo_root / "core" / "rules" / "c" / "rule-bad-test.json"
         bad_rule.write_text(json.dumps({"id": "not-valid"}), encoding="utf-8")
-        try:
-            result = subprocess.run(
-                [sys.executable, "tools/validate.py"],
-                cwd=repo_root,
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("rule-bad-test.json", result.stderr)
-        finally:
-            bad_rule.unlink()
+        self.addCleanup(lambda: bad_rule.unlink(missing_ok=True))
+        result = subprocess.run(
+            [sys.executable, "tools/validate.py"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("rule-bad-test.json", result.stderr)
+
+    def test_validate_cli_reports_json_decode_error(self) -> None:
+        """tools/validate.py has a documented JSONDecodeError branch; prove it.
+        A malformed rule file should exit 1 with 'invalid JSON' in stderr."""
+        import subprocess
+        import sys
+
+        repo_root = Path(__file__).resolve().parents[2]
+        bad_rule = repo_root / "core" / "rules" / "c" / "rule-malformed.json"
+        bad_rule.write_text("{not valid json", encoding="utf-8")
+        self.addCleanup(lambda: bad_rule.unlink(missing_ok=True))
+        result = subprocess.run(
+            [sys.executable, "tools/validate.py"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("invalid JSON", result.stderr)
+        self.assertIn("rule-malformed.json", result.stderr)
 
 
 class TestLoadAllCRules(unittest.TestCase):

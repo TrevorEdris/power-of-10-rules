@@ -9,7 +9,6 @@ The schema file itself (core/rules/schema.json) is skipped.
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 

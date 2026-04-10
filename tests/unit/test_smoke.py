@@ -57,6 +57,40 @@ class TestCliVersion(unittest.TestCase):
         self.assertIn("pow10", result.stdout)
 
 
+class TestPendingSubcommandStubs(unittest.TestCase):
+    """M0 ships stubs for audit/report/list-waivers so bin wrappers exit 0.
+
+    Real implementations land in M3. These tests guard the promise that the
+    bundled bin wrappers do not crash on a fresh install.
+    """
+
+    def _run(self, subcommand: str) -> "subprocess.CompletedProcess[str]":
+        env_path = str(PLUGIN_ROOT)
+        return subprocess.run(
+            [sys.executable, "-m", "pow10", subcommand],
+            cwd=REPO_ROOT,
+            env={"PYTHONPATH": env_path, "PATH": "/usr/bin:/bin"},
+            capture_output=True,
+            text=True,
+        )
+
+    def test_audit_stub_exits_zero(self) -> None:
+        result = self._run("audit")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("not yet implemented", result.stdout)
+        self.assertIn("M3", result.stdout)
+
+    def test_report_stub_exits_zero(self) -> None:
+        result = self._run("report")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("not yet implemented", result.stdout)
+
+    def test_list_waivers_stub_exits_zero(self) -> None:
+        result = self._run("list-waivers")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("not yet implemented", result.stdout)
+
+
 class TestPythonVersionGate(unittest.TestCase):
     def test_runtime_python_is_supported(self) -> None:
         self.assertGreaterEqual(sys.version_info[:2], (3, 9))

@@ -1,0 +1,85 @@
+{
+  "$comment": "pow10 rule schema. Validated by plugin/pow10/rules.py::validate_rule — a stdlib-only subset of JSON Schema. Supported keywords: type, required, enum, pattern, items, properties, additionalProperties. Unsupported keywords are ignored by the validator, so keep the schema inside that subset.",
+  "title": "pow10 rule",
+  "type": "object",
+  "required": [
+    "id",
+    "number",
+    "name",
+    "rationale",
+    "severity",
+    "languages",
+    "enforcement",
+    "citations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^pow10-([1-9]|10)$"
+    },
+    "number": {
+      "type": "integer",
+      "enum": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    },
+    "name": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["blocker", "high", "medium", "low"]
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["c", "cpp", "python", "go", "rust", "kotlin", "java", "typescript"]
+      }
+    },
+    "enforcement": {
+      "type": "object",
+      "required": ["strategy", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["static-analysis", "metric", "manual-review", "compiler-flag", "hybrid"]
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "reference"],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

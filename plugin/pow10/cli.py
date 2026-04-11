@@ -1,15 +1,17 @@
 """argparse dispatcher for pow10 subcommands.
 
 Subcommands wired up across milestones:
-  M0: version          (implemented)
-  M0: audit            (stub — lands in M3)
-  M0: report           (stub — lands in M3)
-  M0: list-waivers     (stub — lands in M3)
-  M3: waive
-  M2: explain
+  version         (M0, implemented)
+  explain         (M2, implemented)
+  audit           (M0 stub -> M3)
+  fix             (M2 stub -> M3)
+  onboard         (M2 stub -> M3)
+  report          (M0 stub -> M3)
+  waive           (M2 stub -> M3)
+  list-waivers    (M0 stub -> M3)
 
-M0 ships stubs for audit/report/list-waivers so the bin wrappers exit 0 with a
-"not yet implemented" message instead of crashing on an unknown subcommand.
+Stub subcommands exit 0 with a "not yet implemented" message so bin wrappers
+and Claude Code skill surfaces work end-to-end on a fresh install.
 """
 
 import argparse
@@ -17,12 +19,16 @@ import sys
 from typing import List, Optional
 
 from pow10 import __version__
+from pow10.explain import ExplainError, explain
 
-# Subcommands stubbed in M0 and implemented in later milestones. Each entry
+# Subcommands stubbed out until their owning milestone lands. Each entry
 # maps the subcommand name to the milestone that will implement it.
 _PENDING_SUBCOMMANDS = {
     "audit": "M3",
+    "fix": "M3",
+    "onboard": "M3",
     "report": "M3",
+    "waive": "M3",
     "list-waivers": "M3",
 }
 
@@ -39,6 +45,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"pow10 {__version__}")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("version", help="print pow10 version and exit")
+
+    explain_parser = sub.add_parser(
+        "explain",
+        help="print the full text of a Power of 10 rule",
+    )
+    explain_parser.add_argument(
+        "number",
+        type=int,
+        help="rule number (1-10)",
+    )
+
     for name, milestone in _PENDING_SUBCOMMANDS.items():
         sub.add_parser(name, help=f"not yet implemented (lands in {milestone})")
     return parser
@@ -56,6 +73,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.command == "version" or args.command is None:
         sys.stdout.write(f"pow10 {__version__}\n")
         return 0
+    if args.command == "explain":
+        try:
+            return explain(args.number)
+        except ExplainError as err:
+            sys.stderr.write(f"pow10 explain: {err}\n")
+            return 2
     if args.command in _PENDING_SUBCOMMANDS:
         milestone = _PENDING_SUBCOMMANDS[args.command]
         sys.stdout.write(

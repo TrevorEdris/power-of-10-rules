@@ -209,3 +209,6 @@ __marimo__/
 # pow10 project-specific
 docs/pow10-report/
 .DS_Store
+
+# Local session notes (never commit)
+.ai/

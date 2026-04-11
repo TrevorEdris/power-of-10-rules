@@ -7,6 +7,7 @@ These tests run the CLI as a subprocess against the bundled plugin tree so
 they exercise the same `sys.path` dance the bin wrappers do.
 """
 
+import os
 import subprocess
 import sys
 import unittest
@@ -19,10 +20,15 @@ PLUGIN_ROOT = REPO_ROOT / "plugin"
 
 
 def _run_cli(*args: str) -> "subprocess.CompletedProcess[str]":
+    # Merge into the inherited env instead of replacing it. A scrubbed env
+    # drops HOME / LANG / LC_* / PATH entries required by some macOS Python
+    # builds (Homebrew, framework builds outside /usr/bin), and can produce
+    # UTF-8 locale warnings or crashes on stdout writes.
+    env = {**os.environ, "PYTHONPATH": str(PLUGIN_ROOT)}
     return subprocess.run(
         [sys.executable, "-m", "pow10", *args],
         cwd=REPO_ROOT,
-        env={"PYTHONPATH": str(PLUGIN_ROOT), "PATH": "/usr/bin:/bin"},
+        env=env,
         capture_output=True,
         text=True,
     )

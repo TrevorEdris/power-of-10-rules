@@ -212,11 +212,20 @@ def _yaml_escape(value: str) -> str:
     """Minimal YAML-safe single-line string encoding.
 
     We only need scalars inside frontmatter. If the string contains a colon,
-    quote it. Backslashes and quotes are escaped. Newlines are rejected —
-    frontmatter values here are always single-line.
+    quote it. Backslashes and quotes are escaped. Control characters that
+    cannot appear in a plain or double-quoted scalar without explicit
+    escaping are rejected up front — frontmatter values here are always
+    single-line printable text.
+
+    Note on `#`: YAML treats `#` as a comment only when preceded by
+    whitespace, so a mid-value `#` in a quoted scalar is safe. The blacklist
+    below catches `#` as the leading char, which *would* start a comment.
     """
-    if "\n" in value:
-        raise ValueError(f"multiline strings not supported in frontmatter: {value!r}")
+    for bad_char, label in (("\n", "newline"), ("\t", "tab"), ("\r", "carriage return")):
+        if bad_char in value:
+            raise ValueError(
+                f"{label}s not supported in frontmatter scalar: {value!r}"
+            )
     if ":" in value or '"' in value or value.startswith(("'", "[", "{", "&", "*", "#", "?", "|", "-", "<", ">", "=", "!", "%", "@", "`")):
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'

@@ -90,10 +90,9 @@ def _emit_data_rules(rules: list) -> int:
     Deterministic: re-reads the JSON and re-writes it sorted + 2-space indented
     so small formatting differences in core/ do not flow through as drift.
     """
-    PLUGIN_DATA_RULES_C_DIR.mkdir(parents=True, exist_ok=True)
-    # Remove stale rule files first.
-    for stale in PLUGIN_DATA_RULES_C_DIR.glob("rule-*.json"):
-        stale.unlink()
+    # Full reset — mirrors skills/ and agents/ handling so orphaned files
+    # (renamed slugs, hand-added suffixed copies) cannot survive regeneration.
+    _reset_dir(PLUGIN_DATA_RULES_C_DIR)
     core_dir = REPO_ROOT / "core" / "rules" / "c"
     count = 0
     for path in sorted(core_dir.glob("rule-*.json")):
@@ -109,10 +108,10 @@ def _emit_data_rules(rules: list) -> int:
 
 
 def _emit_rule_skills(rules: list) -> int:
-    """Write one plugin/skills/rule-NN-<slug>/SKILL.md per rule."""
-    for number, slug in RULE_SLUGS.items():
-        # Nothing to clean per-rule — _reset_dir already handled the parent.
-        pass
+    """Write one plugin/skills/rule-NN-<slug>/SKILL.md per rule.
+
+    Parent dir wipe is handled by `_reset_dir(PLUGIN_SKILLS_DIR)` in main().
+    """
     count = 0
     for rule in rules:
         slug = RULE_SLUGS[rule.number]

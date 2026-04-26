@@ -15,63 +15,31 @@ Each function fits on one printed page — hard limit 60 source lines (excluding
 
 A function that fits on one page can be reviewed and tested as a unit. Longer functions hide bugs by combining responsibilities. Short functions also make refactoring safer and unit testing tractable.
 
-## What a violation looks like
+## Universal violation patterns
 
 - Single function > 60 SLoC
 - Cyclomatic complexity > 10
 - Multiple distinct responsibilities in one body (parsing + validating + persisting)
+- Deep nesting (> 3 levels of `if`/`for`)
+
+## Universal remediation pattern
+
+Extract by responsibility. Each helper takes one phase of the work and returns its output to the caller, which now reads as a sequential pipeline. Each helper is independently testable.
 
 ## Per-language guidance
 
-### C
-- Hard 60 / soft 40 lines
-- Tools: `clang-tidy` `readability-function-size` (`LineThreshold: 60`, `StatementThreshold: 50`); `lizard` for complexity
+- C: [references/c.md](references/c.md)
+- Go: [references/go.md](references/go.md)
+- Python: [references/python.md](references/python.md)
+- Java: [references/java.md](references/java.md)
+- Kotlin: [references/kotlin.md](references/kotlin.md)
 
-### Go
-- Same thresholds — Go's verbose error handling makes 60 a tight but achievable target
-- Extract error-handling chains into helper functions
-- Tools: `golangci-lint` (`funlen` `lines: 60`, `gocyclo` `min-complexity: 10`, `gocognit`)
-
-### Python
-- 50-line soft limit — Python is denser than C
-- Tools: `ruff` (`PLR0915` too-many-statements, `PLR0912` too-many-branches, `C901` complex)
-
-### Java
-- 60-line hard limit; tighter for ceremonial Java since boilerplate eats lines
-- Tools: `Checkstyle` `MethodLength` (`max: 60`); `PMD` `ExcessiveMethodLength`, `CyclomaticComplexity`
-
-### Kotlin
-- 50-line soft, 60 hard. Kotlin's expression bodies and `apply`/`also` make short functions easy
-- Tools: `detekt` (`LongMethod` `threshold: 60`, `ComplexMethod`, `LongParameterList`)
-
-## Remediation pattern
-
-Extract by responsibility:
-
-```python
-# Before (Rule 4 violation: 80-line function)
-def process_request(req):
-    # ...validate...  (20 lines)
-    # ...transform... (30 lines)
-    # ...persist...   (20 lines)
-    # ...respond...   (10 lines)
-
-# After
-def process_request(req):
-    validated = validate(req)
-    transformed = transform(validated)
-    persisted = persist(transformed)
-    return respond(persisted)
-```
-
-Each helper is now independently testable.
-
-## When a long function is justified
+## When violation is justified
 
 Generated code, large `switch` dispatchers (consider table-driven instead), state machines. Document with a waiver:
 
-```python
-# pow10: allow rule=4 until=2026-12-31 owner=parser-team reason="generated state table"
+```
+// pow10: allow rule=4 until=YYYY-MM-DD owner=<handle> reason="generated state table"
 ```
 
 ## Citations

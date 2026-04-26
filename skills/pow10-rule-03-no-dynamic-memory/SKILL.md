@@ -15,56 +15,16 @@ After the initialization phase, no heap allocation. All memory comes from fixed-
 
 Heap allocation is nondeterministic: it can fail, fragment, leak, or be used after free. None of these failure modes are statically rule-out-able. Eliminating post-init allocation makes worst-case memory provable.
 
-## What a violation looks like
+## Universal violation patterns
 
-- `malloc`/`new`/`make`/`alloc` outside an init function
-- Variable-size buffers grown inside hot paths
-- Implicit allocations from string concatenation, boxing, autoboxing in hot loops
+- Heap allocation calls in hot paths (`malloc`, `new`, `make([]T, n)`, `[]`)
+- Implicit allocations from string concatenation, autoboxing, lambda capture
+- Variable-size buffers grown inside loops
+- Container growth without pre-sized capacity
 
-## Per-language guidance
+## Universal remediation pattern
 
-### C
-- Forbid `malloc`, `calloc`, `realloc`, `free`, `alloca` after init
-- Mark init boundary: `// pow10:init-end`
-- Use fixed-size pool allocators, static arrays, stack
-- Tools: `clang-tidy` `cppcoreguidelines-no-malloc`; `cppcheck`
-
-### Go
-- Hardest language for this rule — many idioms allocate (slices grown via `append`, string concat, interface boxing, closures)
-- Pre-allocate with `make([]T, 0, N)`; use `sync.Pool` for reusable buffers; avoid `fmt.Sprintf` in hot paths
-- Disable GC pressure measurement: `GODEBUG=gctrace=1` to verify zero allocs
-- Tools: `go test -benchmem`, `pprof` allocs profile, `golangci-lint` (`prealloc`, `gocritic` `appendCombine`)
-
-### Python
-- Effectively impossible to ban allocation in CPython. Apply Rule 3 in spirit: pre-allocate buffers with `array.array` or NumPy, avoid list comprehensions in hot loops
-- For real safety-critical Python (rare), use MicroPython with bounded heap
-- Tools: `tracemalloc`, `memory_profiler`
-
-### Java
-- Pre-allocate object pools at startup; use `java.nio.ByteBuffer.allocateDirect` once
-- Forbid autoboxing in hot paths (use `int[]` not `List<Integer>`)
-- For real-time work, use the RTSJ scoped memory model
-- Tools: `SpotBugs` (`Bx_BOXING_IMMEDIATELY_UNBOXED`), `PMD` (`AvoidInstantiatingObjectsInLoops`), JMH `+gc`
-
-### Kotlin
-- Same as Java plus: avoid `lambda` captures that allocate (use `inline fun` for hot-path callbacks)
-- Forbid `?.let { }` in hot loops if it captures
-- Tools: `detekt` (`SpreadOperator`, `ForEachOnRange`); JVM allocation profiler
-
-## Remediation pattern
-
-```c
-// Before (Rule 3 violation)
-char *buf = malloc(n);
-process(buf, n);
-free(buf);
-
-// After
-#define BUF_MAX 1024
-static char buf[BUF_MAX];
-assert(n <= BUF_MAX);
-process(buf, n);
-```
+Allocate at init time. Reuse buffers (object pools, ring buffers, static arrays). Cap input sizes with assertions so worst-case memory is provable. Mark the init/post-init boundary explicitly.
 
 ## Init phase boundary
 
@@ -77,6 +37,20 @@ int main(void) {
     // pow10:init-end
     for (;;) { tick(); }
 }
+```
+
+## Per-language guidance
+
+- C: [references/c.md](references/c.md)
+- Go: [references/go.md](references/go.md)
+- Python: [references/python.md](references/python.md) (apply in spirit — CPython allocates constantly)
+- Java: [references/java.md](references/java.md)
+- Kotlin: [references/kotlin.md](references/kotlin.md)
+
+## Waiver convention
+
+```
+// pow10: allow rule=3 until=YYYY-MM-DD owner=<handle> reason="..."
 ```
 
 ## Citations

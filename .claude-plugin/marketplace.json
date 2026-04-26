@@ -9,7 +9,7 @@
     {
       "name": "pow10",
       "source": ".",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "license": "MIT",
       "category": "code-quality",
       "tags": ["safety-critical", "nasa", "jpl", "power-of-10", "ai-skills", "agentic", "code-review"]

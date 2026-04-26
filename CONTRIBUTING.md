@@ -1,15 +1,12 @@
 # Contributing
 
-## SKILL.md size limit
+## Skill layout (mandatory)
 
-**Hard limit: 200 lines per SKILL.md.**
-
-When a per-rule SKILL.md exceeds 200 lines, split per-language sections into reference files using progressive disclosure:
+Every per-rule skill follows the split layout:
 
 ```
 skills/pow10-rule-NN-<slug>/
-├── SKILL.md                 # rule statement, rationale, universal patterns,
-│                            # context-manifest pointing at language refs
+├── SKILL.md
 └── references/
     ├── c.md
     ├── go.md
@@ -18,33 +15,38 @@ skills/pow10-rule-NN-<slug>/
     └── kotlin.md
 ```
 
-`SKILL.md` keeps:
+`SKILL.md` carries:
 
 - Frontmatter (`name`, `description`)
 - Rule statement, severity, rationale
-- Universal violation patterns + remediation example
+- Universal violation patterns (language-agnostic)
+- Universal remediation pattern (language-agnostic)
+- Pointers to each `references/<lang>.md`
 - Waiver convention reference
 - Citations
-- A `context-manifest` block listing the per-language references
 
 `references/<lang>.md` carries:
 
 - Language-specific forbidden patterns
-- Language-specific replacement idioms
-- Tool names + check codes (clang-tidy, golangci-lint, ruff, detekt, SpotBugs)
-- Language-specific remediation examples
+- **At least one violating code example**
+- **At least one remediation step for that example**
+- Tool names and check codes (clang-tidy, golangci-lint, ruff, detekt, SpotBugs)
 
-The agent loads only the language references relevant to the file under review.
+The agent loads only the language reference relevant to the file under review, keeping context focused.
 
-CI enforces the 200-line limit — see `.github/workflows/ci.yml`.
+## Hard limits
+
+- `SKILL.md` ≤ 200 lines (CI-enforced)
+- Every per-rule skill MUST have all five `references/<lang>.md` files (CI-enforced)
 
 ## Adding a language
 
-Today: C, Go, Python, Java, Kotlin. To add another:
+To add a new language (say, Rust):
 
-1. Append a per-language section to every rule's SKILL.md (or a `references/<lang>.md` file if that rule already exceeds 200 lines).
-2. Update `commands/pow10-overview.md` if the languages list is mentioned.
-3. Update `README.md` "Languages covered" line.
+1. Add `references/rust.md` to every per-rule skill (10 files).
+2. Add a pointer line under "Per-language guidance" in each `SKILL.md`.
+3. Update `commands/pow10-overview.md` and `README.md` "Languages covered" line.
+4. Update CI's per-language verification step.
 
 ## Citations
 

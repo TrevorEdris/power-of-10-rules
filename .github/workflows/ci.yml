@@ -35,6 +35,21 @@ jobs:
           done
           echo "All 10 rule skills present."
 
+      - name: Verify per-language reference files exist for every rule
+        run: |
+          set -e
+          fail=0
+          for d in skills/pow10-rule-*/; do
+            for lang in c go python java kotlin; do
+              if [ ! -f "${d}references/${lang}.md" ]; then
+                echo "FAIL: ${d}references/${lang}.md missing"
+                fail=1
+              fi
+            done
+          done
+          [ "$fail" -eq 0 ] && echo "All 50 reference files present (10 rules x 5 languages)."
+          exit $fail
+
       - name: Verify slash commands + auditor agent
         run: |
           set -e

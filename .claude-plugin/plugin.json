@@ -1,6 +1,6 @@
 {
   "name": "pow10",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "NASA Power of 10 rules for safety-critical code as agentic skills for Claude Code.",
   "author": {
     "name": "TrevorEdris",

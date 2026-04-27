@@ -1,65 +1,77 @@
 # power-of-10-rules
 
-NASA's [Power of 10 rules for developing safety-critical code][holzmann] as agentic skills for Claude Code, Cursor, and Codex.
+NASA's [Power of 10 rules for developing safety-critical code][holzmann] as a Claude Code plugin: 10 per-rule skills, 2 slash commands, and 1 review subagent.
 
-One source of truth — rendered to three platforms. Zero runtime dependencies beyond Python 3.9 stdlib.
-
-## Status
-
-v0.0.1 — scaffolding (M0 Bootstrap). Rules logic lands in M1+.
+This is **not a linter**. It teaches the agent the ten rules well enough to apply them during edits, reviews, and authoring across **C, Go, Python, Java, and Kotlin**. When a hard automated check is wanted, each skill names the right existing tool to invoke (clang-tidy, golangci-lint, ruff, detekt, SpotBugs). We don't reinvent them.
 
 ## Install
-
-### Claude Code (primary)
 
 ```bash
 /plugin marketplace add TrevorEdris/power-of-10-rules
 /plugin install pow10@pow10
-/pow10:onboard
 ```
 
-### Cursor
+## Use
 
-```bash
-git clone https://github.com/TrevorEdris/power-of-10-rules /tmp/pow10
-cp -r /tmp/pow10/cursor/.cursor/rules/* .cursor/rules/
+| Surface | What it does |
+|---|---|
+| `/pow10-overview` | Show the ten rules with severities + waiver convention |
+| `/pow10-review <scope>` | Walk all ten rules over a file, dir, or `git diff` ref |
+| `pow10-rule-NN-<slug>` skills | Auto-loaded when relevant code is edited or discussed |
+| `pow10-auditor` agent | Same review as `/pow10-review`, run as a subagent |
+
+## Repository layout
+
+```
+.claude-plugin/
+├── plugin.json
+└── marketplace.json
+skills/
+├── pow10-rule-01-control-flow/
+│   ├── SKILL.md
+│   └── references/{c,go,python,java,kotlin}.md
+├── pow10-rule-02-bounded-loops/...
+├── pow10-rule-03-no-dynamic-memory/...
+├── pow10-rule-04-short-functions/...
+├── pow10-rule-05-assertion-density/...
+├── pow10-rule-06-minimum-scope/...
+├── pow10-rule-07-check-return-values/...
+├── pow10-rule-08-limited-preprocessor/...
+├── pow10-rule-09-restrict-pointers/...
+└── pow10-rule-10-warnings-as-errors/...
+commands/
+├── pow10-overview.md
+└── pow10-review.md
+agents/
+└── pow10-auditor.md
 ```
 
-### Codex
+Repo root **is** the plugin root — no nested `plugins/<tool>/` indirection.
 
-```bash
-cp /tmp/pow10/codex/AGENTS.pow10.md ./
-bash /tmp/pow10/codex/install.sh
+## Waiver convention
+
+When a rule must be broken, leave an inline comment so reviewers and future agents see it:
+
+```
+// pow10: allow rule=N until=YYYY-MM-DD owner=<handle> reason="..."
 ```
 
-## Requirements
+Use the file's native comment syntax (`//`, `#`, `--`). All four fields required. No statefile.
 
-- Python 3.9 or later on `PATH` (ships with macOS Command Line Tools)
-- Per-language analyzer binaries on `PATH` (`clang-tidy`, `staticcheck`, `ruff`, `detekt`, `spotbugs`) — `pow10:onboard` verifies presence and reports install commands
+## Languages covered
 
-## Design principles
+C, Go, Python, Java, Kotlin. Each rule's per-language section gives concrete violation patterns, remediation snippets, and the existing analyzer to invoke for hard checks.
 
-1. **Single source of truth, three rendered targets.** Rule content lives once in `core/*.json`. A Python generator emits Claude Code plugin, Cursor rules, and Codex prompts from the same source. CI enforces no drift.
-2. **Zero runtime dependencies.** Stdlib-only. No `pip install`, no `uv`, no PyPI.
-3. **JSON everywhere for data.** Rules, language profiles, analyzer configs, and consumer config all use JSON.
+## Other AI tools
 
-## Development
+This repo currently targets Claude Code only. Cursor and Codex variants were removed in 0.2.0 to cut maintenance overhead. If interest emerges, contributors can re-add them under a `contrib/` path that mirrors the canonical Claude Code skills.
 
-```bash
-git clone git@github.com:TrevorEdris/power-of-10-rules.git
-cd power-of-10-rules
-python3 -m unittest discover tests        # run tests
-python3 tools/validate.py                  # validate core/*.json
-python3 tools/generate.py                  # regenerate plugin/, cursor/, codex/
-python3 tools/verify_no_drift.py           # fails if generated outputs drift from core/
-```
+## Contributing
 
-No `pip install` step. `python3` on `PATH` is the only prerequisite.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the 200-line SKILL.md size policy and the per-language split layout.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
-
-Rule text cites Holzmann (2006) and the JPL Institutional Coding Standard; paraphrases used throughout.
+MIT. See [LICENSE](LICENSE). Rule text paraphrases [Holzmann (2006)][holzmann] and the JPL Institutional Coding Standard.
 
 [holzmann]: https://spinroot.com/gerard/pdf/P10.pdf

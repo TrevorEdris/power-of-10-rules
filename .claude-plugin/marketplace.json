@@ -1,6 +1,6 @@
 {
   "name": "pow10",
-  "description": "NASA Power of 10 rules as agentic skills.",
+  "description": "NASA Power of 10 rules for safety-critical code as Claude Code skills, slash commands, and a review subagent.",
   "owner": {
     "name": "TrevorEdris",
     "url": "https://github.com/TrevorEdris/power-of-10-rules"
@@ -8,11 +8,11 @@
   "plugins": [
     {
       "name": "pow10",
-      "source": "./plugin",
-      "version": "0.0.1",
+      "source": ".",
+      "version": "0.3.0",
       "license": "MIT",
       "category": "code-quality",
-      "tags": ["safety-critical", "nasa", "jpl", "power-of-10", "static-analysis"]
+      "tags": ["safety-critical", "nasa", "jpl", "power-of-10", "ai-skills", "agentic", "code-review"]
     }
   ]
 }

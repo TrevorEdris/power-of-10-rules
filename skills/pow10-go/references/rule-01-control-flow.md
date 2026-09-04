@@ -1,49 +1,65 @@
-# Rule 1 — Go
+# Rule 1 - Restrict Control Flow to Simple Constructs (Go)
 
-## Forbidden
+**Statement (Holzmann):** Use only straight-line execution, conditionals, and bounded iteration. Forbid `goto`, `setjmp`/`longjmp`, and recursion (direct or indirect, including mutual recursion across translation units).
 
-`goto` (rare but exists), direct or indirect recursion. `defer` for cleanup is allowed and preferred over `goto cleanup` patterns.
+**Profile (adapted):** applies partially; severity **medium**.
 
-## Violating example
+`goto` is essentially moot in Go - idiomatic code almost never uses it and style convention already discourages it. Recursion is normal and often idiomatic (tree/graph walks, recursive descent parsers, divide-and-conquer); goroutine stacks grow dynamically, so recursion over trusted, internally-bounded data is not a safety-critical concern. The real modern hazard is recursion whose depth is driven by external or attacker-controlled input (nested JSON, request payloads, recursive config includes), which is a stack-exhaustion DoS vector.
+
+## Checklist
+- Flag any `goto` used as a substitute for structured error handling.
+- Require an explicit, enforced depth cap on any recursive function whose depth depends on external or user-controlled input.
+- Accept recursion over trusted, size-bounded internal data without extra guards.
+- Reject indirect or mutual recursion across package boundaries without a documented depth limit.
+- Verify unbounded growth is checked even though goroutine stacks grow dynamically by default.
+
+## Violation
 
 ```go
-func walk(n *Node, visit func(*Node)) {
-    if n == nil {
-        return
-    }
-    visit(n)
-    walk(n.Left, visit)
-    walk(n.Right, visit)
+package main
+
+func depth(v any, d int) int {
+	m, ok := v.(map[string]any)
+	if !ok || len(m) == 0 {
+		return d
+	}
+	max := d
+	for _, val := range m {
+		if c := depth(val, d+1); c > max {
+			max = c
+		}
+	}
+	return max
 }
 ```
 
-Recursive tree walk. Stack depth unbounded.
-
-## Remediation
-
-Iterate with an explicit bounded stack:
+## Fix
 
 ```go
-const maxDepth = 1024
+package main
 
-func walk(root *Node, visit func(*Node)) {
-    stack := make([]*Node, 0, maxDepth)
-    stack = append(stack, root)
-    for i := 0; i < maxDepth && len(stack) > 0; i++ {
-        n := stack[len(stack)-1]
-        stack = stack[:len(stack)-1]
-        if n == nil {
-            continue
-        }
-        visit(n)
-        stack = append(stack, n.Right, n.Left)
-    }
+import "fmt"
+
+func depth(v any, d int) (int, error) {
+	const maxJSONDepth = 64
+	if d > maxJSONDepth {
+		return 0, fmt.Errorf("nesting exceeds %d", maxJSONDepth)
+	}
+	m, ok := v.(map[string]any)
+	if !ok { return d, nil }
+	best := d
+	for _, val := range m {
+		c, err := depth(val, d+1)
+		if err != nil { return 0, err }
+		best = max(best, c)
+	}
+	return best, nil
 }
 ```
 
-Stack capacity caps reachable depth; the `for` loop carries an explicit upper bound (Rule 2).
+## Tooling
+- `golangci-lint` (`gocyclo`, `gocognit`, `nestif`): proxy - indirect complexity signal, none detect recursion directly
+- `manual review`: confirm any recursive function whose depth is driven by external input carries an explicit, enforced depth cap
 
-## Hard checks
-
-- `golangci-lint` with `gocyclo`, `nestif`, `gocritic`
-- No standard recursion check; manual review or custom `analysis.Analyzer`
+## Strict profile
+Strict profile bans every recursive function and every `goto` outright, trusted data included, at severity blocker. Convert recursive walks to explicit iteration over a bounded work stack.

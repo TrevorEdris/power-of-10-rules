@@ -1,49 +1,45 @@
-# Rule 1 — Python
+# Rule 1 - Restrict Control Flow to Simple Constructs (Python)
 
-## Forbidden
+**Statement (Holzmann):** Use only straight-line execution, conditionals, and bounded iteration; forbid `goto`, `setjmp`/`longjmp`, and recursion (direct or indirect, including mutual recursion).
 
-Direct or indirect recursion. `try`/`except` used as control flow on the normal path. (Python has no `goto`.)
+**Profile (adapted):** applies partially; severity **medium**.
 
-## Violating example
+Python has no `goto`, so that clause is not applicable. Recursion is common and idiomatic for tree and graph algorithms, and CPython's default recursion limit (1000 frames) turns unbounded recursion into a catchable `RecursionError` rather than memory corruption. The real modern hazard is recursion whose depth is driven by external or untrusted input (nested JSON/YAML, recursive file-tree walks) - that is a stack-exhaustion DoS vector and should be capped.
 
-```python
-def walk(node, visit):
-    if node is None:
-        return
-    visit(node)
-    walk(node.left, visit)
-    walk(node.right, visit)
-```
+## Checklist
+- Cap the depth of any recursive function that walks user- or network-supplied nesting.
+- Raise an explicit, named error when the depth cap is exceeded; do not truncate silently.
+- Do not use `sys.setrecursionlimit()` to paper over recursion that should be iterative.
+- Accept recursion over trusted, size-bounded internal data structures without extra guards.
+- Extension beyond Holzmann's rule 1 (Python-specific, not canonical): avoid `try`/`except` as non-local `goto`-style control flow on the normal, non-error path.
 
-Default recursion limit is 1000 frames; deep trees raise `RecursionError`.
-
-## Remediation
-
-Iterate with an explicit bounded deque:
+## Violation
 
 ```python
-from collections import deque
-
-MAX_NODES = 10_000
-
-def walk(root, visit):
-    stack = deque([root])
-    for _ in range(MAX_NODES):
-        if not stack:
-            return
-        node = stack.pop()
-        if node is None:
-            continue
-        visit(node)
-        stack.append(node.right)
-        stack.append(node.left)
-    raise RuntimeError(f"walk exceeded {MAX_NODES} nodes")
+def depth(node, d=0):
+    # No cap: nesting depth is fully controlled by caller-supplied data.
+    if not isinstance(node, dict) or not node:
+        return d
+    return max(depth(v, d + 1) for v in node.values())
 ```
 
-The `range(MAX_NODES)` cap satisfies Rule 2; the explicit raise prevents silent overrun.
+## Fix
 
-## Hard checks
+```python
+MAX_DEPTH = 64
 
-- `ruff` codes: `PLR0911` (too-many-return), `PLW0603` (global-statement)
-- `pylint` `R0901` for inheritance depth
-- Manual review or custom AST check for recursion (no built-in linter rule)
+
+def depth(node, d=0):
+    if d > MAX_DEPTH:
+        raise ValueError(f"nesting exceeds {MAX_DEPTH}")
+    if not isinstance(node, dict) or not node:
+        return d
+    return max(depth(v, d + 1) for v in node.values())
+```
+
+## Tooling
+- `ruff` `C901`: proxy: mccabe complexity threshold - flags functions with high branching, not recursion itself
+- `manual review`: no ruff or pylint rule detects recursion directly; grep for a function calling its own name, or write a small AST check for self-referential `Call` nodes, and confirm a depth cap exists wherever the input is external
+
+## Strict profile
+Any recursion, direct or indirect, is a finding **[blocker]** - including over trusted internal data. Convert every recursive function to explicit iteration with a bounded work stack.

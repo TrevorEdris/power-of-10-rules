@@ -1,46 +1,63 @@
-# Rule 4 — Python
+# Rule 4 - Short Functions (Python)
 
-## Limits
+**Statement (Holzmann):** No function should be longer than what can be printed on a single sheet of paper (about 60 lines).
 
-Soft 50 source lines, hard 60 (Python is denser than C). Cyclomatic complexity ≤ 10. Branches ≤ 12.
+**Profile (adapted):** applies partially; severity **medium**.
 
-## Violating example
+Line-count limits matter less than statement and branch counts in Python given dense syntax like comprehensions and context managers. Treat the limits as review smells, not hard CI blockers, unless the team wants stricter enforcement. A function mixing validation, parsing, and execution hides bugs and resists focused unit testing.
+
+## Checklist
+- Read the function as a short, named pipeline (validate -> transform -> act), not one body mixing concerns.
+- Keep it under ruff's statement default (50) and branch default (12), or document why it exceeds them.
+- Keep McCabe complexity reasonable when C901 is enabled; pull deeply nested try/except or comprehensions into helpers.
+- Make each helper independently unit-testable and separately importable.
+- Limit nesting to about 3 levels; prefer guard clauses over nested `if`.
+
+## Violation
 
 ```python
-def process_request(req: Request) -> Response:
+def process_request(req):
     if req is None:
         raise ValueError("nil request")
     if len(req.body) > MAX_LEN:
-        raise ValueError(f"len {len(req.body)} > {MAX_LEN}")
-    # ... 15 more validation lines ...
+        raise ValueError("too long")
     try:
         parsed = json.loads(req.body)
     except json.JSONDecodeError as e:
         raise ParseError(str(e)) from e
-    # ... 15 more parse / transform lines ...
     result = compute(parsed)
-    # ... 15 more execute lines ...
     return Response(status=200, body=json.dumps(result))
 ```
 
-70 lines; mixed concerns; hard to test the parse step in isolation.
-
-## Remediation
+## Fix
 
 ```python
-def process_request(req: Request) -> Response:
+def process_request(req):
     validate(req)
     parsed = parse(req)
-    result = execute(parsed)
+    result = compute(parsed)
     return serialize(result)
+
+def validate(req):
+    if req is None:
+        raise ValueError("nil request")
+    if len(req.body) > MAX_LEN:
+        raise ValueError("too long")
+
+def parse(req):
+    try:
+        return json.loads(req.body)
+    except json.JSONDecodeError as e:
+        raise ParseError(str(e)) from e
+
+def serialize(result):
+    return Response(status=200, body=json.dumps(result))
 ```
 
-Each helper has one job; main function reads as a four-step pipeline.
+## Tooling
+- `ruff`: `PLR0915` - too-many-statements, default threshold 50
+- `ruff`: `PLR0912` - too-many-branches, default threshold 12
+- `ruff`: `C901` - McCabe complexity too high; requires `select = ["C90"]` and `[tool.ruff.lint.mccabe] max-complexity = 10` in pyproject.toml, not enabled by default
 
-## Hard checks
-
-- `ruff`:
-  - `PLR0915` (too-many-statements, default 50)
-  - `PLR0912` (too-many-branches, default 12)
-  - `C901` (complex, McCabe ≥ 10)
-- `radon cc -s -a` for cyclomatic complexity report
+## Strict profile
+60-line hard limit, severity **high**. Treat PLR0915/PLR0912 as build-blocking with no exceptions mechanism, and enable C901 explicitly with `max-complexity = 10`.

@@ -1,54 +1,72 @@
-# Rule 4 — Go
+# Rule 4 - Short Functions (Go)
 
-## Limits
+**Statement (Holzmann):** Each function fits on one printed page - hard limit 60 source lines (excluding comments), soft limit 40.
 
-Hard 60 source lines per function. Soft 40. Cyclomatic complexity ≤ 10. Go's verbose error handling makes 60 a tight target — extract error chains into helpers.
+**Profile (adapted):** applies partially; severity **medium**.
 
-## Violating example
+Treat 60 lines / 40 statements as a smell threshold, not a hard gate. What matters for normal Go services is single-responsibility per function and testability, not the literal page-fit rationale. Go's verbose `if err != nil` idiom means naive line counting punishes idiomatic error handling - prefer statement count and cyclomatic/cognitive complexity over raw lines.
+
+## Checklist
+- Name the function for one action; split it if the name needs "and".
+- Keep it under funlen defaults (~60 lines / ~40 statements), or justify exceeding them (e.g. a table-driven switch).
+- Keep gocyclo/gocognit complexity in the linter's default range; extract validate/parse/execute/serialize helpers when a function spans multiple phases.
+- Limit nesting to ~3 levels; use early returns instead of nested branches.
+- Make each extracted helper unit-testable without mocking the whole call chain.
+- Exempt constructors/handlers that are pure dependency wiring with no branching.
+
+## Violation
 
 ```go
-func ProcessRequest(req *Request) (*Response, error) {
-    if req == nil { return nil, errors.New("nil request") }
-    if req.Len > MaxLen { return nil, fmt.Errorf("len %d > %d", req.Len, MaxLen) }
-    // ... 15 more validation lines with error wrapping ...
-    parsed, err := Parse(req.Body)
-    if err != nil { return nil, fmt.Errorf("parse: %w", err) }
-    // ... 15 more parse-related lines ...
-    result, err := Execute(parsed)
-    if err != nil { return nil, fmt.Errorf("execute: %w", err) }
-    // ... 15 more execute-related lines ...
-    resp, err := Serialize(result)
-    if err != nil { return nil, fmt.Errorf("serialize: %w", err) }
-    return resp, nil
+package main
+
+func Handle(w http.ResponseWriter, r *http.Request) {
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", 400)
+		return
+	}
+	if req.Name == "" || len(req.Name) > 100 {
+		http.Error(w, "invalid name", 400)
+		return
+	}
+	rec, err := db.Insert(req)
+	if err != nil {
+		http.Error(w, "db error", 500)
+		return
+	}
+	json.NewEncoder(w).Encode(rec)
 }
 ```
 
-80+ lines, error wrapping bloat, four responsibilities.
-
-## Remediation
+## Fix
 
 ```go
-func ProcessRequest(req *Request) (*Response, error) {
-    if err := validateRequest(req); err != nil {
-        return nil, err
-    }
-    parsed, err := parseRequest(req)
-    if err != nil {
-        return nil, err
-    }
-    result, err := executeRequest(parsed)
-    if err != nil {
-        return nil, err
-    }
-    return serializeResponse(result)
+package main
+
+func Handle(w http.ResponseWriter, r *http.Request) {
+	req, err := decodeReq(r)
+	if err != nil { http.Error(w, err.Error(), 400); return }
+	rec, err := db.Insert(req)
+	if err != nil { http.Error(w, "db error", 500); return }
+	json.NewEncoder(w).Encode(rec)
+}
+
+func decodeReq(r *http.Request) (Req, error) {
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return Req{}, errors.New("bad json")
+	}
+	if req.Name == "" || len(req.Name) > 100 {
+		return Req{}, errors.New("invalid name")
+	}
+	return req, nil
 }
 ```
 
-Each helper is one responsibility, well under 60 lines, independently testable.
+## Tooling
+- `golangci-lint`: `funlen` (lines: 60, statements: 40) - flags functions past the size threshold
+- `golangci-lint`: `gocyclo` (min-complexity: 10) - flags high branch-count functions
+- `golangci-lint`: `gocognit` - flags functions that are hard to follow, independent of raw size
 
-## Hard checks
-
-- `golangci-lint`:
-  - `funlen` with `lines: 60`, `statements: 40`
-  - `gocyclo` with `min-complexity: 10`
-  - `gocognit` for cognitive complexity
+## Strict profile
+Strict profile enforces 60 lines as a hard cap, not a soft target, at severity **[high]**. Any function over 60 lines or 40 statements fails review; no justification exempts it - extract helpers before merge.

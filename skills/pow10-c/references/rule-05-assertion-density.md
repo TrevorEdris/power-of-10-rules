@@ -1,23 +1,43 @@
-# Rule 5 — C
+# Rule 5 - Assertion Density (C)
 
-## Target
+**Statement (Holzmann):** Use a minimum of two runtime assertions per function on average across a translation unit, each side-effect-free, each with a defined recovery path that is not stripped in release builds.
 
-Average ≥ 2 `assert()` calls per function across a translation unit. Side-effect-free expressions only. In safety-critical builds, replace `NDEBUG`-strip with a `safe_assert` macro that calls a recovery handler.
+**Profile (literal):** applies fully; severity **high**.
 
-## Violating example
+C has no built-in error-return convention for invariant violations, so `assert()` is the primary tool for catching impossible states before they corrupt memory or propagate. A function with no assertions gives a reviewer no evidence the author considered preconditions, postconditions, or invariants. Side-effecting assert expressions are dangerous because `NDEBUG` silently deletes the behavior they were performing.
+
+## Checklist
+- Validate every pointer and numeric parameter against domain constraints at function entry
+- Check state invariants immediately before any mutation
+- Check postconditions immediately before return
+- Write assert expressions with zero side effects (no `++`, no assignment, no function calls with effects)
+- Never let a failed assertion fall through to continued execution in a safety-critical build
+- Flag any translation unit averaging under 2 asserts per function in review
+
+## Violation
 
 ```c
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+typedef struct { int64_t balance; } account_t;
+
 void transfer(account_t *from, account_t *to, int64_t amount) {
     from->balance -= amount;
     to->balance += amount;
 }
+
+/* no preconditions, no invariant checks, no postconditions */
 ```
 
-No preconditions, no invariant checks, no postconditions.
-
-## Remediation
+## Fix
 
 ```c
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+typedef struct { int64_t balance; } account_t;
+
 void transfer(account_t *from, account_t *to, int64_t amount) {
     assert(from != NULL);
     assert(to != NULL);
@@ -34,8 +54,9 @@ void transfer(account_t *from, account_t *to, int64_t amount) {
 
 Six assertions in a 6-line function. Each invariant is named explicitly and fails fast.
 
-## Hard checks
+## Tooling
+- `clang-tidy`: `bugprone-assert-side-effect` - flags assert expressions with side effects
+- `manual review`: count `assert(` occurrences per function; require average >= 2 per translation unit; flag `NDEBUG` in safety-critical build configs
 
-- Custom metric: count `assert(` per function; require average ≥ 2 across the TU
-- `clang-tidy`: `cert-msc54-cpp` (no side-effect in assert)
-- Manual review for `NDEBUG` in safety-critical builds
+## Strict profile
+`clang-tidy` promotes `bugprone-assert-side-effect` from warning to error in CI [blocker]. `cppcheck --enable=all --error-exitcode=1` also runs and must pass clean.

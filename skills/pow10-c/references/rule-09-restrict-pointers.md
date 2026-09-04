@@ -1,48 +1,62 @@
-# Rule 9 — C
+# Rule 9 - Restrict Pointers (C)
 
-## Forbidden
+**Statement (Holzmann):** At most one level of dereferencing per declaration; pointer dereferences may not be hidden inside macro definitions or typedef declarations; no function pointers.
 
-`**` and `***` in declarations (more than one level of indirection). Function pointer types, typedefs, and assignments.
+**Profile (literal):** applies fully; severity **blocker**.
 
-## Allowed (with documented waiver, isolated)
+Every extra level of indirection multiplies the aliasing state space a reviewer or static analyzer must track, and a function pointer defeats call-graph construction - the basis for reachability, coverage, and worst-case execution time analysis. Hiding a `*` inside a macro or a `typedef` does not remove the hazard, it just moves the dereference somewhere `grep` and a reviewer's eye won't catch it.
 
-Hardware interrupt vector tables. `argv` (`char **` is part of the C standard signature for `main`).
+## Checklist
 
-## Violating example
+- Reject any declaration with `**` or deeper (except the isolated, documented `main(int, char **)` signature).
+- Reject function pointer types, typedefs, and assignments outright.
+- Expand every `typedef` and macro definition and check the result for a hidden `*p` or `(*fn)(...)` before approving.
+- Replace dispatch tables with a closed `switch` over an enum so the call graph is fully static.
+- Flag any macro whose expansion dereferences a pointer argument (`#define AT(p) (*(p))`) as a violation, not a convenience.
+
+## Violation
 
 ```c
-typedef int (*handler_t)(event_t *);
+typedef int (*handler_t)(int);
 
-static handler_t handlers[NUM_EVENTS];
+static handler_t handlers[4];
 
-void dispatch(event_t *e) {
-    handlers[e->type](e);
+void dispatch(int type, int val) {
+    handlers[type] (val);
 }
 ```
 
-Function pointer table defeats call-graph analysis; reachability of any specific handler is hidden.
+Function pointer table hides the reachable targets; reachability of any specific handler cannot be verified statically.
 
-## Remediation
-
-Replace with a `switch`:
+## Fix
 
 ```c
-void dispatch(event_t *e) {
-    assert(e != NULL);
-    switch (e->type) {
-        case EVT_HEARTBEAT: handle_heartbeat(e); break;
-        case EVT_COMMAND:   handle_command(e);   break;
-        case EVT_TELEMETRY: handle_telemetry(e); break;
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef enum { EVT_A, EVT_B, EVT_C } event_type_t;
+
+static void handle_a(int val) { printf("a:%d\n", val); }
+static void handle_b(int val) { printf("b:%d\n", val); }
+
+void dispatch(event_type_t type, int val) {
+    switch (type) {
+        case EVT_A: handle_a(val); break;
+        case EVT_B: handle_b(val); break;
         default:
-            panic("dispatch: unknown event type %d", e->type);
+            fprintf(stderr, "dispatch: unknown type %d\n", type);
+            abort();
     }
 }
 ```
 
-Call graph fully static. `default` panics on unhandled types — fail fast.
+Call graph is fully static; `default` aborts on an unhandled type instead of hiding it.
 
-## Hard checks
+## Tooling
 
-- `clang-tidy`: no built-in matcher for `**` count; write a custom `clang-query` rule
-- `cppcheck` for function-pointer warnings (`functionConst`, `functionStatic`)
-- Manual review of declarations
+- `clang-tidy`: `bugprone-multi-level-implicit-pointer-conversion` - proxy: catches implicit conversions across pointer levels, not a substitute for reading declarations
+- `manual review`: expand every macro and typedef by hand and check for `**`, `***`, or function pointer types; no verified clang-tidy or cppcheck check counts declaration-level pointer depth directly
+
+## Strict profile
+
+No strict-mode clang-tidy check targets function-pointer or multi-level-pointer declarations directly, so manual review sign-off stays required on any file containing `**` or a typedef whose underlying type is a function pointer. `cppcheck --enable=all --error-exitcode=1` must also run clean, per the global strict CI gate.

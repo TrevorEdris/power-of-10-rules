@@ -1,45 +1,50 @@
-# Rule 5 — Python
+# Rule 5 - Assertion Density (Python)
 
-## Target
+**Statement (Holzmann):** Use a minimum of two runtime assertions per function on average across a translation unit, each side-effect-free and triggering a defined recovery path rather than being stripped in release builds.
 
-Average ≥ 2 invariant checks per function. Beware: `assert` is stripped under `python -O`. For safety paths, use explicit `if not cond: raise InvariantError(...)` instead of `assert`.
+**Profile (adapted):** applies partially; severity **medium**.
 
-## Violating example
+The literal "≥2 assertions per function" count doesn't fit Python app code, but the core hazard is real: bare `assert` used for input validation vanishes under `python -O` or certain optimized runs. Enforce the boundary distinction instead - raise explicit exceptions for anything reachable from untrusted input (API payloads, CLI args, env vars), and treat `assert` as an acceptable dev-time sanity check only where being stripped carries no security or correctness risk.
+
+## Checklist
+- Never use bare `assert` to validate external/untrusted input (request bodies, query params, CLI args, env vars) reachable in production
+- Raise a specific exception type (`ValueError`, a domain exception) with a message identifying the violated invariant, not a bare `assert`
+- Reserve `assert` for internal invariants where stripping under `-O` is an acceptable risk
+- Prefer typed validation (pydantic/attrs/dataclass + mypy) over ad-hoc guard clauses for structured external input
+- Cover the raise path for each validation branch with a test
+- Treat ruff `S101` findings on trust-boundary code as must-fix, not style noise
+
+## Violation
 
 ```python
 def transfer(from_account, to_account, amount):
+    assert amount > 0
     from_account.balance -= amount
     to_account.balance += amount
+    return from_account.balance
 ```
 
-No types, no preconditions, no invariant checks.
-
-## Remediation
+## Fix
 
 ```python
-def transfer(from_account: Account, to_account: Account, amount: int) -> None:
-    if from_account is None or to_account is None:
-        raise InvariantError("transfer: account is None")
+class InsufficientFunds(Exception):
+    def __init__(self, amount: int, balance: int) -> None:
+        super().__init__(f"amount {amount} exceeds balance {balance}")
+
+
+def transfer(from_account, to_account, amount: int) -> None:
     if amount <= 0:
-        raise ValueError(f"transfer: amount must be positive, got {amount}")
+        raise ValueError(f"amount must be positive, got {amount}")
     if from_account.balance < amount:
         raise InsufficientFunds(amount, from_account.balance)
-    if from_account is to_account:
-        raise InvariantError("transfer: self-transfer")
-
     from_account.balance -= amount
     to_account.balance += amount
-
-    if from_account.balance < 0:
-        raise InvariantError(f"transfer: balance went negative: {from_account.balance}")
 ```
 
-Five guards. Programmer errors raise distinct exceptions; expected failures raise domain errors. None can be stripped by `-O`.
+## Tooling
+- `ruff`: `S101` (assert used - stripped under `-O`; ruff flags all assert usage, security-sensitive checks especially)
+- `ruff`: `B011` (assert-false - use `raise` instead of `assert False`)
+- `manual review`: count guard density on complex/high-risk functions (financial, auth, concurrency); typed signatures narrow the surface needing manual guards
 
-## Hard checks
-
-- `ruff`:
-  - `B011` (assert-False — use raise instead)
-  - `S101` (assert in production for security contexts)
-- Manual review: count guard density per function
-- `mypy --strict` to enforce typed signatures so callers can't pass `None` silently
+## Strict profile
+Requires >= 2 side-effect-free runtime checks per function on average, counted mechanically; a stripped `assert` does not count toward the total, so use `if not cond: raise` instead **[high]**.

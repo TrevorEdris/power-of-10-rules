@@ -1,78 +1,63 @@
-# Rule 10 — Go
+# Rule 10 - Warnings As Errors (Go)
 
-## Required
+**Statement (Holzmann):** Compile with all warnings enabled and eliminate warnings by modifying the code, not by suppressing the warning.
 
-`go vet ./...` clean. `staticcheck` with `all` checks. `golangci-lint` with: `errcheck`, `gosec`, `govet`, `ineffassign`, `unused`, `misspell`, `gocritic`, `revive`. CI fails on any warning.
+**Profile (adapted):** applies fully; severity **high**.
 
-## Violating example
+Go's toolchain surfaces defects for free: `go vet` and `staticcheck` catch nil derefs, format-string mismatches, and unreachable code before a single test runs. A CI pipeline that only runs `go build` and `go test` throws this away and lets real bugs merge silently. Extension beyond Holzmann: run `golangci-lint` as an aggregator covering many analyzers in one CI job, rather than requiring a separate second-vendor tool.
 
-```yaml
-- run: go build ./...
-- run: go test ./...
-```
+## Checklist
+- Run `go vet ./...` in CI; fail the build on any non-zero exit
+- Run `golangci-lint run` in CI against a checked-in `.golangci.yml`; fail the build on any finding
+- Enable staticcheck's checks, standalone or via golangci-lint's staticcheck linter
+- Reject bare `//nolint`; require `//nolint:linter // reason` on every suppression
+- Keep lint config in version control, not only in a developer's local IDE
+- Treat `go build` and `go test` output as insufficient proof of a clean build on their own
 
-Builds and tests pass; vet/static analysis never runs; warnings invisible.
-
-## Remediation
-
-```yaml
-- name: go vet
-  run: go vet ./...
-
-- name: staticcheck
-  uses: dominikh/staticcheck-action@v1
-  with:
-    version: "latest"
-    install-go: false
-
-- name: golangci-lint
-  uses: golangci/golangci-lint-action@v6
-  with:
-    version: latest
-    args: --timeout=5m
-
-- name: gosec
-  uses: securego/gosec@master
-  with:
-    args: ./...
-
-- name: build + test
-  run: |
-    go build -gcflags="-m=2" ./... 2>build.log || true
-    go test -race -count=1 ./...
-```
-
-`-gcflags=-m=2` shows escape analysis / inlining — review for hot-path regressions.
-
-## golangci-lint baseline (.golangci.yml)
-
-```yaml
-linters:
-  enable:
-    - errcheck
-    - gosec
-    - govet
-    - ineffassign
-    - unused
-    - misspell
-    - gocritic
-    - revive
-    - staticcheck
-    - gocyclo
-    - funlen
-    - prealloc
-    - errorlint
-    - wrapcheck
-    - nilerr
-issues:
-  exclude-use-default: false
-  max-issues-per-linter: 0
-  max-same-issues: 0
-```
-
-## Suppressions
+## Violation
 
 ```go
-//nolint:errcheck // pow10: allow rule=10 until=2026-12-31 owner=team reason="best-effort cleanup"
-_ = file.Close()
+package example
+
+func process(items []string) error {
+	for _, item := range items {
+		err := save(item)
+		_ = err // errcheck would flag this, but CI never runs errcheck
+	}
+	return nil
+}
+
+func save(item string) error {
+	return nil
+}
 ```
+
+## Fix
+
+```go
+package example
+
+import "fmt"
+
+func process(items []string) error {
+	for _, item := range items {
+		if err := save(item); err != nil {
+			return fmt.Errorf("save %q: %w", item, err)
+		}
+	}
+	return nil
+}
+
+func save(item string) error {
+	return nil
+}
+```
+
+## Tooling
+- `go vet ./...`: exit non-zero on any vet diagnostic - catches format-string mismatches, unreachable code, struct tag errors
+- `golangci-lint run`: aggregates `errcheck`, `govet`, `staticcheck`, `ineffassign`, `unused`, `gosec`, `revive` - fails CI on any finding
+- `staticcheck`: full check set enabled (standalone or via golangci-lint) - catches unused writes, deprecated API use, correctness bugs
+- `manual review`: confirm every `//nolint` names a linter and a one-line reason, not a bare suppression
+
+## Strict profile
+Unchanged; severity stays **high**. The adapted checklist already applies the literal rule in full: every warning gates CI, with no lower bar to tighten.

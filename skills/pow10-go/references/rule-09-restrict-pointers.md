@@ -1,68 +1,63 @@
-# Rule 9 — Go
+# Rule 9 - Restrict Pointers (Go)
 
-## Forbidden
+**Statement (Holzmann):** At most one level of dereferencing per declaration; pointer dereferences may not be hidden inside macro definitions or typedef declarations; no function pointers.
 
-`**T` parameter types. `chan chan T`. First-class function parameters crossing safety-package boundaries (e.g., `func(...) func(...) ...` curried across modules). Deep nested closures.
+**Profile (adapted):** applies in spirit; severity **medium**.
 
-## Allowed
+Raw multi-level pointers (`**T`) are already vanishingly rare in idiomatic Go. The real analog is uncontrolled first-class-function dispatch: registries populated from outside the owning package, or curried handler chains, that make it impossible for a reviewer or the compiler to enumerate what actually runs. Ordinary Go idiom - `http.HandlerFunc`, middleware chains, functional options, local closures - is exempt; this targets safety- and business-critical control flow.
 
-First-class functions within a package (e.g., a `Strategy` field on a struct). Channels of value types.
+## Checklist
+- Flag any exported function or method that takes a `**T` parameter on sight.
+- Verify dispatch maps keyed by an enum type and holding `func` values, driving critical logic, are populated only inside their owning package, not appended to from outside or via reflection.
+- Prefer a closed enum + `switch` over an open dispatch map for state machines, payment/authz decisions, or other auditable control flow.
+- Enable `exhaustive` on switches over closed enums so new values can't silently fall through `default`.
+- Flag closures nested more than two levels deep, or that both capture and mutate outer-scope state, in core logic paths.
 
-## Violating example
+## Violation
 
 ```go
-package safety
+package handlers
 
-type EventHandler func(*Event) error
+var Registry = map[string]func(Order) error{}
 
-func Dispatch(handlers map[EventType]EventHandler, e *Event) error {
-    h, ok := handlers[e.Type]
-    if !ok {
-        return fmt.Errorf("dispatch: unknown type %v", e.Type)
-    }
-    return h(e)
+func Register(name string, fn func(Order) error) {
+    Registry[name] = fn // any package can inject a handler
+}
+
+func Process(name string, o Order) error {
+    h := Registry[name]
+    return h(o)
 }
 ```
 
-`EventHandler` parameters cross the package boundary; callers can register arbitrary functions; reachability hidden.
-
-## Remediation
-
-Replace function map with sealed dispatch table:
+## Fix
 
 ```go
-package safety
+package handlers
 
-type EventType int
+import "fmt"
+
+type OrderState int
 
 const (
-    EvtHeartbeat EventType = iota
-    EvtCommand
-    EvtTelemetry
+    StatePending OrderState = iota
+    StateShipped
 )
 
-func Dispatch(e *Event) error {
-    if e == nil {
-        return ErrNilEvent
+func Process(s OrderState, o Order) error {
+    switch s {
+    case StatePending:
+        return handlePending(o)
+    case StateShipped:
+        return handleShipped(o)
     }
-    switch e.Type {
-    case EvtHeartbeat:
-        return handleHeartbeat(e)
-    case EvtCommand:
-        return handleCommand(e)
-    case EvtTelemetry:
-        return handleTelemetry(e)
-    default:
-        return fmt.Errorf("dispatch: unknown type %v", e.Type)
-    }
+    return fmt.Errorf("process: unknown state %v", s)
 }
 ```
 
-Call graph static; `EventType` enum is closed; new types require code change.
+## Tooling
+- `golangci-lint`: `exhaustive` - flags switches over a closed enum that don't cover every value
+- `manual review`: cross-package dispatch-map registration and curried cross-module function chains - no verified linter targets this directly
 
-## Hard checks
-
-- `golangci-lint`:
-  - `gocritic` `paramTypeCombine` (multi-level pointer types)
-- Manual review for cross-package `func` parameters in safety packages
-- `go vet -unreachable`
+## Strict profile
+No function values or dispatch maps anywhere, including `http.HandlerFunc`, middleware chains, and functional options **[blocker]**. Enforce via manual review; no verified linter bans function-typed declarations.

@@ -1,36 +1,40 @@
-# Rule 4 — C
+# Rule 4 - Short Functions (C)
 
-## Limits
+**Statement (Holzmann):** Each function fits on one printed page - hard limit 60 source lines (excluding comments), soft limit 40.
 
-Hard 60 source lines per function (excluding comments). Soft 40. Cyclomatic complexity ≤ 10.
+**Profile (literal):** applies fully; severity **high**.
 
-## Violating example
+Flight software requires a function be fully visible to one reviewer without scrolling or paging. A function that exceeds the page-fit limit hides mixed responsibilities and defeats unit testability. Line-count alone is Holzmann's original test; complexity metrics are a reasonable but separate, uncited addition used here as a supporting smell signal.
+
+## Checklist
+- Count source lines excluding comments; flag functions over 60, review functions over 40.
+- Verify the function has one responsibility, not validate+parse+execute+serialize combined.
+- Check nesting depth stays at or under 3 levels of `if`/`for`/`while`.
+- Confirm each candidate helper can be extracted and unit-tested without the whole call chain.
+- Reject `switch` dispatchers over the limit unless they are table-driven.
+
+## Violation
 
 ```c
+/* types and helper prototypes elided */
 int process_request(request_t *req, response_t *resp) {
-    /* validate (20 lines) */
     if (req == NULL) return -1;
     if (req->len > MAX_LEN) return -2;
-    /* ... 18 more lines ... */
-    /* parse (20 lines) */
+    if (req->body == NULL) return -3;
     parser_t p;
     parser_init(&p, req->body);
-    /* ... 18 more lines ... */
-    /* execute (15 lines) */
-    /* ... */
-    /* serialize response (15 lines) */
-    /* ... */
+    if (parser_run(&p) != 0) return -4;
+    result_t result;
+    if (execute(&p, &result) != 0) return -5;
+    if (serialize_response(&result, resp) != 0) return -6;
     return 0;
 }
 ```
 
-70+ lines, four distinct responsibilities, untestable as a unit.
-
-## Remediation
-
-Decompose by responsibility — each new function fits on a page:
+## Fix
 
 ```c
+/* types and helper prototypes elided */
 int process_request(request_t *req, response_t *resp) {
     int rc = validate_request(req);
     if (rc != 0) return rc;
@@ -44,9 +48,9 @@ int process_request(request_t *req, response_t *resp) {
 }
 ```
 
-Each helper is independently testable; `process_request` is now ~10 lines.
+## Tooling
+- `clang-tidy`: `readability-function-size` with `LineThreshold: 60` and `StatementThreshold: 50` - flags functions over the line/statement cap
+- `manual review`: confirm each function has one responsibility and nesting stays under 3 levels; no automated tool catches mixed-responsibility bodies
 
-## Hard checks
-
-- `clang-tidy`: `readability-function-size` with `LineThreshold: 60`, `StatementThreshold: 50`
-- `lizard` for cyclomatic complexity
+## Strict profile
+STRICT CI treats the 60-line/40-statement cap as a literal, build-blocking gate via `clang-tidy readability-function-size` (or `lizard`) with zero exceptions - flight software has no post-ship refactor path, so nothing merges over the limit.

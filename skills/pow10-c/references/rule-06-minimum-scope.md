@@ -1,10 +1,19 @@
-# Rule 6 — C
+# Rule 6 - Minimum Scope (C)
 
-## Forbidden
+**Statement (Holzmann):** Data objects are declared at the smallest possible level of scope.
 
-Mutable globals. Mutable file-scope `static` shared across functions. Variables declared at function top but used in only one branch. Function-top declarations forced by C89 — use C99 mid-block declarations.
+**Profile (literal):** applies fully; severity **medium**.
 
-## Violating example
+The literal rule bans mutable globals and mutable file-scope `static` state outright, since either creates implicit coupling between functions, defeats reasoning about ownership, and is not thread-safe. It also requires declarations at point of first use rather than hoisted to the top of a block or function, which was a C89 workaround no longer needed under C99.
+
+## Checklist
+- Reject any mutable file-scope `static` or externally-linked global variable
+- Verify shared state is encapsulated in a struct passed explicitly to the functions that use it
+- Confirm `const`-qualified globals used as read-only configuration are the only exception
+- Check that local variables are declared at first use, not hoisted to function or block top
+- Confirm no variable is declared at function scope but used in only one branch
+
+## Violation
 
 ```c
 static int counter = 0;
@@ -18,13 +27,11 @@ int read_counter(void) {
 }
 ```
 
-`counter` is mutable file-scope state. Two functions implicitly coupled via shared mutation; not thread-safe; hidden from the call site.
-
-## Remediation
-
-Encapsulate in a struct passed explicitly:
+## Fix
 
 ```c
+#include <assert.h>
+#include <stddef.h>
 typedef struct {
     int value;
 } ticker_t;
@@ -45,11 +52,10 @@ int ticker_read(const ticker_t *t) {
 }
 ```
 
-Ownership is explicit; multiple instances are independent; testable in isolation.
+## Tooling
+- `clang-tidy`: `cppcoreguidelines-avoid-non-const-global-variables` - flags mutable global/static variables
+- `clang-tidy`: `readability-isolate-declaration` - flags multiple variables declared in one statement, a common cause of over-broad hoisted declarations
+- `cppcheck --enable=all` - proxy: general static analysis pass that surfaces non-const global usage
 
-## Hard checks
-
-- `clang-tidy`:
-  - `cppcoreguidelines-avoid-non-const-global-variables`
-  - `readability-isolate-declaration`
-- `cppcheck` `--enable=style` for non-const globals
+## Strict profile
+STRICT mode promotes `cppcoreguidelines-avoid-non-const-global-variables` [medium] to a CI-blocking error, banning any file-scope `static` mutable state with zero exceptions, and requires a clean `cppcheck --enable=all --error-exitcode=1` run.

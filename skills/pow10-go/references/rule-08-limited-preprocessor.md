@@ -1,54 +1,64 @@
-# Rule 8 — Go
+# Rule 8 - Limited Preprocessor (Go)
 
-Go has no preprocessor. The analogous restriction is on `unsafe`, `reflect`, and `go generate` codegen.
+**Statement (Holzmann):** The preprocessor is limited to header inclusion and simple macro definitions, forbidding token pasting, variable-argument lists, and recursive macro calls, with conditional compilation kept rare and justified.
 
-## Allowed
+**Profile (adapted):** applies in spirit; severity **medium**.
 
-`go generate` with committed output (parser tables, mock implementations). `reflect` confined to a serialization layer. `unsafe` only behind a vetted, narrowly-scoped package boundary.
+Go has no preprocessor, so the literal rule does not apply. The in-spirit successor targets reflect-based control flow and unsafe type punning: both hide the call graph from static analysis the same way aggressive macros do, and the failure mode shifts from a compile error to a runtime panic. Reflection at serialization or dependency-injection boundaries (encoding/json, ORMs, wire/fx-style wiring) is standard idiomatic Go and is not in scope - only reflect used to dispatch business logic by name or type in place of an interface or switch.
 
-## Forbidden
+## Checklist
+- Reject `reflect.ValueOf(x).MethodByName(...).Call(...)`-style dynamic dispatch in request or business-logic paths; use an interface with a type switch or an explicit dispatch table
+- Confine `unsafe.Pointer` usage to a narrowly-scoped, reviewed package; never use it for type punning across package boundaries
+- Commit `go generate` output to the repo rather than generating it only at build or CI time
+- Allow reflection for JSON/YAML/proto (de)serialization or dependency-injection wiring without flagging it
+- Reject monkey-patching of package-level vars or funcs to alter production behavior at runtime
 
-`unsafe.Pointer` for type punning in safety-critical paths. `reflect` for control flow (e.g., dispatching by type at runtime). Generated code that is not committed.
-
-## Violating example
+## Violation
 
 ```go
-func dispatch(payload any) {
-    rv := reflect.ValueOf(payload)
-    method := rv.MethodByName("Handle")
-    if method.IsValid() {
-        method.Call(nil)
-    }
+package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+func dispatch(action string, p any) error {
+	rv := reflect.ValueOf(p)
+	m := rv.MethodByName(action)
+	if !m.IsValid() {
+		return fmt.Errorf("unknown action %q", action)
+	}
+	m.Call(nil)
+	return nil
 }
 ```
 
-Call graph hidden from static analysis; failure mode is `panic` at runtime.
-
-## Remediation
-
-Replace with an explicit interface and `switch`:
+## Fix
 
 ```go
-type Handler interface {
-    Handle()
+package main
+
+import "fmt"
+
+type Handler interface{ Handle() error }
+
+var dispatch = map[string]func(Handler) error{
+	"create": Handler.Handle,
 }
 
-func dispatch(payload any) error {
-    h, ok := payload.(Handler)
-    if !ok {
-        return fmt.Errorf("dispatch: %T does not implement Handler", payload)
-    }
-    h.Handle()
-    return nil
+func run(action string, h Handler) error {
+	fn, ok := dispatch[action]
+	if !ok {
+		return fmt.Errorf("unknown action %q", action)
+	}
+	return fn(h)
 }
 ```
 
-Type assertion is explicit; failure path is a returned error; call graph fully static.
+## Tooling
+- `golangci-lint` (`gosec`): audits `unsafe.Pointer` usage - proxy: does not catch reflect-based dispatch
+- `manual review`: grep for `MethodByName(` outside serialization/DI packages; no installed linter targets dynamic dispatch-by-name
 
-## Hard checks
-
-- `golangci-lint`:
-  - `gosec` `G103` (audit `unsafe`)
-  - `staticcheck` `SA1019` (deprecated `reflect` patterns)
-- Manual review for `reflect.ValueOf(...).MethodByName(...)` and `Call`
-- `go vet -unreachable` for hidden paths
+## Strict profile
+No `reflect` or `unsafe` anywhere [high]: any import of `reflect` or use of `unsafe.Pointer`, including in serialization and dependency-injection wiring, is a finding regardless of call site.

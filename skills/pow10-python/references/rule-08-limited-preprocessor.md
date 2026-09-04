@@ -1,55 +1,64 @@
-# Rule 8 — Python
+# Rule 8 - Limited Preprocessor (Python)
 
-Python's analogues to the C preprocessor: `eval`, `exec`, `compile`, monkey-patching, dynamic attribute lookup with `getattr(obj, user_input)`.
+**Statement (Holzmann):** Restrict preprocessor use to header inclusion and simple macro definitions; forbid token pasting, variable-argument macro lists, and recursive macro calls.
 
-## Allowed
+**Profile (adapted):** applies partially; severity **high**.
 
-Decorators (they're plain functions). Type aliases. `dataclass` and `attrs` codegen. Module-level `__all__` declarations.
+Python has no preprocessor, but `eval`/`exec` and dynamic name lookup defeat static analysis the same way unrestrained macros do. `eval`/`exec` on untrusted or dynamically-built strings is a real risk in normal app code (config parsing, template rendering, plugin loading) and is banned outright. Decorators, `dataclasses`, `attrs`, and pydantic/ORM metaclasses are pervasive and idiomatic - they stay allowed so the rule remains usable in normal services.
 
-## Forbidden in safety paths
+## Checklist
+- Never call `eval()`/`exec()` on strings built from request input, config, or any non-literal source
+- Never use `globals()[name]` or `getattr(obj, user_controlled_string)` for control-flow dispatch - use an explicit dict/enum dispatch table
+- Allow decorators, `dataclasses`, `attrs`, and pydantic/ORM metaclasses without flag
+- Flag dynamic `importlib.import_module()` calls with a non-literal, user-influenced name; a fixed allowlist of plugin names is fine
+- Forbid runtime monkey-patching of production modules/classes outside test fixtures
 
-`eval`/`exec` on any data not produced by a trusted source at this commit. Monkey-patching production modules at runtime. Metaclasses for control flow (acceptable for ORMs at the framework boundary).
-
-## Violating example
+## Violation
 
 ```python
-def dispatch(action: str, payload: dict) -> Any:
+def handle_create(payload: dict):
+    return {"created": payload}
+
+
+def handle_update(payload: dict):
+    return {"updated": payload}
+
+
+def dispatch(action: str, payload: dict):
     handler = globals()[f"handle_{action}"]
     return handler(payload)
 ```
 
-`globals()` lookup is dynamic; safe analyzers cannot enumerate reachable handlers; failure mode is `KeyError` at runtime.
-
-## Remediation
-
-Explicit dispatch table:
+## Fix
 
 ```python
-def handle_create(payload: dict) -> Result: ...
-def handle_update(payload: dict) -> Result: ...
-def handle_delete(payload: dict) -> Result: ...
+def handle_create(payload: dict):
+    return {"created": payload}
 
-DISPATCH: dict[str, Callable[[dict], Result]] = {
+
+def handle_update(payload: dict):
+    return {"updated": payload}
+
+
+DISPATCH = {
     "create": handle_create,
     "update": handle_update,
-    "delete": handle_delete,
 }
 
-def dispatch(action: str, payload: dict) -> Result:
+
+def dispatch(action: str, payload: dict):
     handler = DISPATCH.get(action)
     if handler is None:
         raise ValueError(f"unknown action: {action}")
     return handler(payload)
 ```
 
-Dispatch table is enumerable; tools see all reachable handlers; unknown action surfaces as a typed error.
+## Tooling
+- `ruff`: `S102` - flags use of `exec`
+- `ruff`: `S307` - flags suspicious `eval` usage
+- `bandit`: `B102 (exec_used)` - flags use of `exec`
+- `bandit`: `B307 (eval)` - flags suspicious `eval` usage
+- `manual review`: `globals()`/`getattr()`-based dispatch tables, dynamic `importlib.import_module()` calls with non-literal names, runtime monkey-patching outside tests
 
-## Hard checks
-
-- `bandit`:
-  - `B102` (exec)
-  - `B307` (eval)
-- `ruff`:
-  - `S102` (use-of-exec)
-  - `S307` (suspicious-eval-usage)
-  - `PGH001` (eval/exec)
+## Strict profile
+Strict **[high]** forbids `eval`, `exec`, computed `getattr(obj, name)` dispatch, and metaclasses in application code entirely, regardless of input source. `importlib.import_module()` names must come from a fixed, reviewed allowlist with no dynamic construction.

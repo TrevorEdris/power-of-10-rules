@@ -1,77 +1,66 @@
 # power-of-10-rules
 
-NASA's [Power of 10 rules for developing safety-critical code][holzmann] as a Claude Code plugin: 10 per-rule skills, 2 slash commands, and 1 review subagent.
-
-This is **not a linter**. It teaches the agent the ten rules well enough to apply them during edits, reviews, and authoring across **C, Go, Python, Java, and Kotlin**. When a hard automated check is wanted, each skill names the right existing tool to invoke (clang-tidy, golangci-lint, ruff, detekt, SpotBugs). We don't reinvent them.
+NASA's Power of 10 rules for safety-critical code, packaged as a Claude Code plugin that applies them while Claude writes and reviews Go, Python, and C. No hooks, no config: three language skills trigger on their descriptions; one command and one agent handle explicit reviews.
 
 ## Install
 
+Local checkout:
+
 ```bash
+claude --plugin-dir ~/src/github.com/TrevorEdris/power-of-10-rules
+```
+
+Marketplace:
+
+```
 /plugin marketplace add TrevorEdris/power-of-10-rules
 /plugin install pow10@pow10
 ```
 
-## Use
+## What you get
 
-| Surface | What it does |
-|---|---|
-| `/pow10-overview` | Show the ten rules with severities + waiver convention |
-| `/pow10-review <scope>` | Walk all ten rules over a file, dir, or `git diff` ref |
-| `pow10-rule-NN-<slug>` skills | Auto-loaded when relevant code is edited or discussed |
-| `pow10-auditor` agent | Same review as `/pow10-review`, run as a subagent |
+| Surface | Behavior |
+| --- | --- |
+| `pow10-go`, `pow10-python` | Trigger while writing, editing, or reviewing that language. Ten-item checklist, **adapted** for normal application code. |
+| `pow10-c` | Same, with the rules in their original literal form. C is the canonical reference. |
+| `/pow10-review <scope> [--strict]` | Explicit review of a file, directory, or git ref. Dispatches `pow10-auditor` and prints its report. |
+| `pow10-auditor` agent | Owns the review procedure and the report format (findings grouped by blocker / high / medium / advisory). |
+| `/pow10` | Overview: the ten rules, the severity matrix, adapted vs strict. |
+
+Adapted is the default everywhere except C. Ask for "the strict pow10 profile" or pass `--strict` to get the literal rules and severities for any language.
+
+## Smoke test
+
+```
+/pow10:pow10
+/pow10:pow10-review examples/violations.go
+/pow10:pow10-review examples/violations.py --strict
+```
+
+Then edit a Go or Python file in any project and watch for `Using pow10-go ...` / `Using pow10-python ...` in Claude's first line.
 
 ## Repository layout
 
 ```
-.claude-plugin/
-├── plugin.json
-└── marketplace.json
-skills/
-├── pow10-rule-01-control-flow/
-│   ├── SKILL.md
-│   └── references/{c,go,python,java,kotlin}.md
-├── pow10-rule-02-bounded-loops/...
-├── pow10-rule-03-no-dynamic-memory/...
-├── pow10-rule-04-short-functions/...
-├── pow10-rule-05-assertion-density/...
-├── pow10-rule-06-minimum-scope/...
-├── pow10-rule-07-check-return-values/...
-├── pow10-rule-08-limited-preprocessor/...
-├── pow10-rule-09-restrict-pointers/...
-└── pow10-rule-10-warnings-as-errors/...
-commands/
-├── pow10-overview.md
-└── pow10-review.md
-agents/
-└── pow10-auditor.md
+.claude-plugin/          plugin.json, marketplace.json (repo root is the plugin root)
+skills/pow10/            overview skill (user-invocable only)
+skills/pow10-go/         SKILL.md checklist + references/rule-01..10-<slug>.md
+skills/pow10-python/     same
+skills/pow10-c/          same
+agents/pow10-auditor.md  review procedure + report format
+commands/pow10-review.md thin dispatcher
+examples/                violation fixtures for the smoke test
+tools/validate.py        structural validator (run in CI); tools/verified/ = tool-name snapshots
 ```
 
-Repo root **is** the plugin root — no nested `plugins/<tool>/` indirection.
+## Languages
 
-## Waiver convention
+Go and Python are primary and get the adapted profile. C is the canonical literal reference. Nothing else is supported; see [CONTRIBUTING.md](CONTRIBUTING.md) to add a language.
 
-When a rule must be broken, leave an inline comment so reviewers and future agents see it:
+## Source
 
-```
-// pow10: allow rule=N until=YYYY-MM-DD owner=<handle> reason="..."
-```
-
-Use the file's native comment syntax (`//`, `#`, `--`). All four fields required. No statefile.
-
-## Languages covered
-
-C, Go, Python, Java, Kotlin. Each rule's per-language section gives concrete violation patterns, remediation snippets, and the existing analyzer to invoke for hard checks.
-
-## Other AI tools
-
-This repo currently targets Claude Code only. Cursor and Codex variants were removed in 0.2.0 to cut maintenance overhead. If interest emerges, contributors can re-add them under a `contrib/` path that mirrors the canonical Claude Code skills.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the 200-line SKILL.md size policy and the per-language split layout.
+Holzmann, G. J. "The Power of 10: Rules for Developing Safety-Critical Code." IEEE Computer 39(6), 2006. <https://spinroot.com/gerard/pdf/P10.pdf>
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Rule text paraphrases [Holzmann (2006)][holzmann] and the JPL Institutional Coding Standard.
-
-[holzmann]: https://spinroot.com/gerard/pdf/P10.pdf
+MIT. See [LICENSE](LICENSE).

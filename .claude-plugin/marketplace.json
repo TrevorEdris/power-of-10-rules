@@ -1,6 +1,6 @@
 {
   "name": "pow10",
-  "description": "NASA Power of 10 rules for safety-critical code as Claude Code skills, slash commands, and a review subagent.",
+  "description": "NASA Power of 10 rules as Claude Code skills that apply while writing and reviewing Go, Python, and C: adapted profile for application code, strict literal profile on request, plus a review command and agent.",
   "owner": {
     "name": "TrevorEdris",
     "url": "https://github.com/TrevorEdris/power-of-10-rules"
@@ -9,10 +9,19 @@
     {
       "name": "pow10",
       "source": ".",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "license": "MIT",
       "category": "code-quality",
-      "tags": ["safety-critical", "nasa", "jpl", "power-of-10", "ai-skills", "agentic", "code-review"]
+      "tags": [
+        "safety-critical",
+        "nasa",
+        "jpl",
+        "power-of-10",
+        "go",
+        "python",
+        "c",
+        "code-review"
+      ]
     }
   ]
 }

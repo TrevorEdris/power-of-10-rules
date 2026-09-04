@@ -1,53 +1,49 @@
 # Contributing
 
-## Skill layout (mandatory)
-
-Every per-rule skill follows the split layout:
+## Layout (enforced by `tools/validate.py` in CI)
 
 ```
-skills/pow10-rule-NN-<slug>/
-├── SKILL.md
+skills/pow10-<lang>/
+├── SKILL.md                       <= 200 lines; frontmatter name == directory; description contains "Use when"
 └── references/
-    ├── c.md
-    ├── go.md
-    ├── python.md
-    ├── java.md
-    └── kotlin.md
+    ├── rule-01-control-flow.md    35-100 lines; exact heading set, see below
+    ├── ...
+    └── rule-10-warnings-as-errors.md
+skills/pow10/SKILL.md              overview; disable-model-invocation: true; no references/
 ```
 
-`SKILL.md` carries:
+`SKILL.md` is the checklist Claude reads on trigger: announce line, when it applies, ten rules with severity and a "read when" pointer, reporting format, strict profile, rationalizations, tooling baseline.
 
-- Frontmatter (`name`, `description`)
-- Rule statement, severity, rationale
-- Universal violation patterns (language-agnostic)
-- Universal remediation pattern (language-agnostic)
-- Pointers to each `references/<lang>.md`
-- Waiver convention reference
-- Citations
+Each reference has exactly these parts, in order:
 
-`references/<lang>.md` carries:
+1. `# Rule N - <Title> (<Go|Python|C>)`
+2. `**Statement (Holzmann):** ...`
+3. `**Profile (adapted):** applies <fully|partially|in spirit|not applicable>; severity **<blocker|high|medium|advisory>**.` (C uses `(literal)`)
+4. `## Checklist` (3-6 mechanical bullets)
+5. `## Violation` (one fenced block, 5-20 lines, compiles)
+6. `## Fix` (one fenced block, 5-20 lines)
+7. `## Tooling` (bullets starting with a backticked tool; only names in `tools/verified/`)
+8. `## Strict profile` (1-4 lines)
 
-- Language-specific forbidden patterns
-- **At least one violating code example**
-- **At least one remediation step for that example**
-- Tool names and check codes (clang-tidy, golangci-lint, ruff, detekt, SpotBugs)
+Severities per rule and language are fixed in `tools/validate.py` (`SEVERITY`). Change them there and in `skills/pow10/SKILL.md` together.
 
-The agent loads only the language reference relevant to the file under review, keeping context focused.
+## Hard rules
 
-## Hard limits
-
-- `SKILL.md` ≤ 200 lines (CI-enforced)
-- Every per-rule skill MUST have all five `references/<lang>.md` files (CI-enforced)
+- No em dashes. No hedging ("consider", "probably").
+- Never cite a linter, check, or rule code that is not in `tools/verified/`. Regenerate those lists (see `tools/verified/README.md`) before adding a new citation.
+- Forbidden strings anywhere under `skills/`, `agents/`, `commands/`, `README.md`, `CONTRIBUTING.md`: the list lives in `tools/validate.py` (`FORBIDDEN`).
 
 ## Adding a language
 
-To add a new language (say, Rust):
+1. Create `skills/pow10-<lang>/SKILL.md` and ten `references/rule-NN-<slug>.md` files following the shapes above.
+2. Add the language to `LANGS` and a severity column to `SEVERITY` in `tools/validate.py`; add a verified tool list under `tools/verified/`.
+3. Add the extension mapping to `agents/pow10-auditor.md` step 3 and a row to the overview table in `skills/pow10/SKILL.md`.
+4. Run `python3 tools/validate.py` until it prints `OK`.
 
-1. Add `references/rust.md` to every per-rule skill (10 files).
-2. Add a pointer line under "Per-language guidance" in each `SKILL.md`.
-3. Update `commands/pow10-overview.md` and `README.md` "Languages covered" line.
-4. Update CI's per-language verification step.
+## Verifying locally
 
-## Citations
-
-Rule wording paraphrases Holzmann (2006) and the JPL Institutional Coding Standard. Don't quote either verbatim at length — paraphrase, then cite.
+```bash
+python3 tools/validate.py
+gofmt -e -l examples/violations.go && python3 -m py_compile examples/violations.py
+claude --plugin-dir .
+```
